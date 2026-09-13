@@ -1,3 +1,4 @@
+import os
 from datetime import datetime
 
 import requests
@@ -21,10 +22,15 @@ app = FastAPI(
 
 
 # --------------------------------------------------
-# Temporary authentication
+# API authentication
 # --------------------------------------------------
 
-DEVICE_API_KEY = "my-phone-secret-key"
+# Railway will provide DEVICE_API_KEY as an environment variable.
+# The fallback keeps local development working for now.
+DEVICE_API_KEY = os.getenv(
+    "DEVICE_API_KEY",
+    "my-phone-secret-key"
+)
 
 
 # --------------------------------------------------
