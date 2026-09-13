@@ -1,5 +1,6 @@
 from datetime import datetime
 
+import requests
 from fastapi import FastAPI, Header, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -15,7 +16,7 @@ Base.metadata.create_all(bind=engine)
 app = FastAPI(
     title="My Phone Locator",
     description="API for receiving and retrieving phone GPS locations.",
-    version="1.0.0"
+    version="1.1.0"
 )
 
 
@@ -35,6 +36,50 @@ class LocationData(BaseModel):
     latitude: float
     longitude: float
     accuracy: float | None = None
+
+
+# --------------------------------------------------
+# Reverse geocoding
+# --------------------------------------------------
+
+def get_location_name(latitude: float, longitude: float):
+
+    url = "https://nominatim.openstreetmap.org/reverse"
+
+    params = {
+        "lat": latitude,
+        "lon": longitude,
+        "format": "jsonv2",
+        "addressdetails": 1,
+        "zoom": 18
+    }
+
+    headers = {
+        "User-Agent": "MyPhoneLocator/1.0"
+    }
+
+    try:
+        response = requests.get(
+            url,
+            params=params,
+            headers=headers,
+            timeout=10
+        )
+
+        response.raise_for_status()
+
+        data = response.json()
+
+        return {
+            "display_name": data.get("display_name"),
+            "address": data.get("address", {})
+        }
+
+    except requests.RequestException:
+        return {
+            "display_name": None,
+            "address": {}
+        }
 
 
 # --------------------------------------------------
@@ -70,6 +115,12 @@ def receive_location(
 
     try:
 
+        # Get human-readable location
+        location_info = get_location_name(
+            data.latitude,
+            data.longitude
+        )
+
         location = Location(
             device_id=data.device_id,
             latitude=data.latitude,
@@ -85,13 +136,17 @@ def receive_location(
         return {
             "success": True,
             "message": "Location received",
+
             "location": {
                 "id": location.id,
                 "device_id": location.device_id,
                 "latitude": location.latitude,
                 "longitude": location.longitude,
                 "accuracy": location.accuracy,
-                "timestamp": location.timestamp
+                "timestamp": location.timestamp,
+
+                "place": location_info["display_name"],
+                "address": location_info["address"]
             }
         }
 
@@ -133,12 +188,21 @@ def get_latest_location(
                 detail="No location found for this device"
             )
 
+        # Reverse geocode latest location
+        location_info = get_location_name(
+            location.latitude,
+            location.longitude
+        )
+
         return {
             "device_id": location.device_id,
             "latitude": location.latitude,
             "longitude": location.longitude,
             "accuracy": location.accuracy,
-            "timestamp": location.timestamp
+            "timestamp": location.timestamp,
+
+            "place": location_info["display_name"],
+            "address": location_info["address"]
         }
 
     finally:
